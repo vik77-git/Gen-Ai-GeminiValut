@@ -1,0 +1,6 @@
+{
+  "name": "GeminiVault — Personal AI Memory",
+  "description": "A secure, authenticated personal AI journal and memory system. Think with Gemini, remember privately, and act intelligently.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

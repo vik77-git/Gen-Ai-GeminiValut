@@ -1,0 +1,98 @@
+rules_version = '2';
+
+/**
+ * GeminiVault — Personal AI Memory
+ * Firestore Security Rules
+ *
+ * CORE SECURITY ARCHITECTURAL PRINCIPLES:
+ * 1. ZERO TRUST: All unauthenticated access is denied unconditionally.
+ * 2. STRICT UID ISOLATION: A user may ONLY access data where resource.ownerUid == request.auth.uid
+ *    or nested under users/{userId} where userId == request.auth.uid.
+ * 3. NO IDOR / NO PRIVILEGE ESCALATION: Ownership fields (ownerUid) cannot be modified post-creation.
+ * 4. LEAST PRIVILEGE: No blanket wildcard access. Every collection is individually secured.
+ */
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Helper functions
+    function isAuthenticated() {
+      return request.auth != null && request.auth.uid != null;
+    }
+
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    function isDocumentOwner() {
+      return isAuthenticated() && resource.data.ownerUid == request.auth.uid;
+    }
+
+    function isCreatingOwnedDocument() {
+      return isAuthenticated() && request.resource.data.ownerUid == request.auth.uid;
+    }
+
+    // Deny all access by default
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // User Profile Document
+    match /users/{userId} {
+      allow read, write: if isOwner(userId);
+
+      // User's private conversations subcollection
+      match /conversations/{conversationId} {
+        allow read, delete: if isOwner(userId);
+        allow create: if isOwner(userId) && 
+          (!('ownerUid' in request.resource.data) || request.resource.data.ownerUid == userId);
+        allow update: if isOwner(userId) && 
+          (!('ownerUid' in request.resource.data) || request.resource.data.ownerUid == userId);
+
+        // Messages inside a conversation
+        match /messages/{messageId} {
+          allow read, write: if isOwner(userId);
+        }
+      }
+
+      // User's private summaries subcollection
+      match /summaries/{summaryId} {
+        allow read, write: if isOwner(userId);
+      }
+
+      // User's private insights subcollection
+      match /insights/{insightId} {
+        allow read, write: if isOwner(userId);
+      }
+    }
+
+    // Top-level conversations (Direct root queries isolated strictly by ownerUid)
+    match /conversations/{conversationId} {
+      allow read: if isDocumentOwner();
+      allow create: if isCreatingOwnedDocument();
+      allow update: if isDocumentOwner() && request.resource.data.ownerUid == resource.data.ownerUid;
+      allow delete: if isDocumentOwner();
+
+      match /messages/{messageId} {
+        allow read, write: if isAuthenticated() && 
+          get(/databases/$(database)/documents/conversations/$(conversationId)).data.ownerUid == request.auth.uid;
+      }
+    }
+
+    // Top-level summaries (Direct root queries isolated strictly by ownerUid)
+    match /summaries/{summaryId} {
+      allow read: if isDocumentOwner();
+      allow create: if isCreatingOwnedDocument();
+      allow update: if isDocumentOwner() && request.resource.data.ownerUid == resource.data.ownerUid;
+      allow delete: if isDocumentOwner();
+    }
+
+    // Top-level insights (Direct root queries isolated strictly by ownerUid)
+    match /insights/{insightId} {
+      allow read: if isDocumentOwner();
+      allow create: if isCreatingOwnedDocument();
+      allow update: if isDocumentOwner() && request.resource.data.ownerUid == resource.data.ownerUid;
+      allow delete: if isDocumentOwner();
+    }
+  }
+}
